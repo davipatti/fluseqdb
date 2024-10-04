@@ -1,0 +1,17 @@
+[project]
+name = "fluseqdb"
+description = "Make and interact with curated influenza sequences."
+version = "0.0.1"
+authors = [{ name = "David Pattinson", email = "david.pattinson@wisc.edu" }]
+dependencies = ["biopython"]
+
+[tool.setuptools]
+packages = ["fluseqdb"]
+
+[project.optional-dependencies]
+dev = ["pytest", "pyflakes", "pycodestyle"]
+
+[project.scripts]
+fsdb_add = "fluseqdb.add:main"
+fsdb_addmeta = "fluseqdb.add_metadata:main"
+fsdb_dumpmeta = "fluseqdb.dump_metadata:main"
