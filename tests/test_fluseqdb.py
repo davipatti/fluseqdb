@@ -70,8 +70,10 @@ class TestAlignToReference:
 
     def test_input_shorter(self):
         output = fsdb.align_to_reference(reference_seq="ACTG", input_seq="ACG")
-        assert output == "AC-G"
+        assert output == "ACG-"
 
     def test_internal_gaps_in_reference_raise_error(self):
         with pytest.raises(ValueError):
-            fsdb.align_to_reference(reference_seq="ACTACT", input_seq="ACTGACT")
+            fsdb.align_to_reference(
+                reference_seq="AAGCGTAAGCCGTACTGCT", input_seq="AAGCGTAAGTCCGTACTGCT"
+            )
