@@ -89,14 +89,14 @@ def add(db_dir: str, new_data_dir: str) -> None:
 
 def main():
     parser = argparse.ArgumentParser(
-        "fsdb_add", description="Add sequences to a fluseq db."
+        "fs_add", description="Add sequences to a fluseq db."
     )
-    parser.add_argument("db_dir", help="Root directory of a fluseq db.")
     parser.add_argument(
         "new_data_dir",
         help="Directory containing new data to add. Must contain a fasta file and "
         "`header_pattern.txt`",
     )
+    parser.add_argument("--db_dir", help="Root directory of a fluseq db.", default=".")
     args = parser.parse_args()
 
     add(db_dir=args.db_dir, new_data_dir=args.new_data_dir)

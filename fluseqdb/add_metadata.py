@@ -1,3 +1,4 @@
+import logging
 import json
 import argparse
 import pandas as pd
@@ -14,11 +15,17 @@ def add_metadata(db_dir: str, df: pd.DataFrame) -> None:
 
     for _, incoming_data in df.iterrows():
 
+        isolate_id = incoming_data["isolate_id"]
+
+        # If this isolate_id doesn't exist for any segment issue a warning and continue
+        if all(not fsdb.exists(isolate_id, segment) for segment in fsdb.segments):
+            logging.warn(f"Not in db: {isolate_id}")
+            continue
+
         for segment in fsdb.segments:
 
-            isolate_id = incoming_data["isolate_id"]
-
-            if not fsdb.exists(isolate_id=isolate_id, segment=segment):
+            if not fsdb.exists(isolate_id, segment):
+                logging.warn(f"{isolate_id} {segment} in metadata does not exist in db")
                 continue
 
             json_path = fsdb.path("sequences", segment, f"{isolate_id}.json")
@@ -52,14 +59,14 @@ def add_metadata(db_dir: str, df: pd.DataFrame) -> None:
 
 def main():
     parser = argparse.ArgumentParser(
-        "fsdb_addmeta", description="Add metadata to a fluseq db."
+        "fs_addmeta", description="Add metadata to a fluseq db."
     )
-    parser.add_argument("db_dir", help="Root directory of a fluseq db.")
     parser.add_argument(
         "table",
         help="CSV file containing metadata to add. First column contains isolate_id. Remaining "
         "columns are added to the isolate_id's data.",
     )
+    parser.add_argument("--db_dir", help="Root directory of a fluseq db.", default=".")
     args = parser.parse_args()
 
     add_metadata(db_dir=args.db_dir, df=pd.read_csv(args.table))
