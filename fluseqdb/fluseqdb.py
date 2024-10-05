@@ -1,24 +1,21 @@
+from functools import cached_property
 from operator import attrgetter
-import sys
+from pathlib import Path
 from string import ascii_lowercase
-import random
-import os
-import subprocess
+from typing import Generator, Optional
 import json
 import logging
-from functools import cached_property
-from pathlib import Path
-from typing import Generator, Optional
+import os
+import random
+import subprocess
+import sys
 
-import pandas as pd
 from Bio.Align import PairwiseAligner
+from Bio.Seq import Seq
 from Bio.SeqIO import parse, write
 from Bio.SeqRecord import SeqRecord
-from Bio.Seq import Seq
 from dendropy import Tree
-
-LOGLEVEL = os.environ.get("LOGLEVEL", "WARNING").upper()
-logging.basicConfig(level=LOGLEVEL)
+import pandas as pd
 
 
 SEGMENTS = "PB2", "PB1", "PA", "HA", "NP", "NA", "MP", "NS"
@@ -35,7 +32,12 @@ class FluSeqDatabase:
 
     def __init__(self, root_dir: str) -> None:
         """
-        A database of curated influenza sequences.
+        Initialize a FluSeqDatabase from a root directory.
+
+        The root directory should have a subdirectory "sequences" with subdirectories
+        for each segment (PB2, PB1, PA, HA, NP, NA, MP, NS). The root directory should also contain
+        a subdirectory "reference" that contains a fasta file for each segment containing a
+        reference sequence.
 
         Args:
             root_dir: The root directory of the database.
@@ -48,19 +50,37 @@ class FluSeqDatabase:
 
     def path(self, *args) -> Path:
         """
-        Construct a path relative to the database's root directory.
+        Return a Path object for the given subdirectory/file in the database root
+        directory.
+
+        Args:
+            *args: The path components to join to the root directory.
+
+        Returns:
+            A Path object for the given path.
         """
         return Path(self.root_dir, *args)
 
     def exists(self, isolate_id: str, segment: str) -> bool:
         """
-        Check if isolate_id exists for segment.
+        Check if a sequence exists in the database.
+
+        Args:
+            isolate_id: The isolate_id of the sequence to check.
+            segment: The segment of the sequence to check.
+
+        Returns:
+            True if the sequence exists, otherwise False.
         """
         return self.path("sequences", segment, f"{isolate_id}.fasta").exists()
 
     def add(self, sequence: str | SeqRecord, metadata: dict[str, str]) -> None:
         """
         Add a sequence to the database.
+
+        Args:
+            sequence: The sequence to add as either a str or SeqRecord.
+            metadata: A dictionary of metadata for the sequence.
         """
         segment = metadata["segment"]
         isolate_id = metadata["isolate_id"]
@@ -92,6 +112,12 @@ class FluSeqDatabase:
 
     @cached_property
     def metadata(self) -> pd.DataFrame:
+        """
+        A DataFrame of all metadata in the database.
+
+        This DataFrame does not include the columns 'dna_insdc', 'segment', 'segment_number',
+        'dna_accession', 'identifier' since these are specific to a particular segment.
+        """
         return pd.concat(
             self.segments[segment].metadata.drop(columns=SEGMENT_SPECIFIC_METADATA)
             for segment in self.segments
@@ -99,8 +125,9 @@ class FluSeqDatabase:
 
     def check(self) -> None:
         """
-        Check:
-            - isolate_ids are consistent in names of sequence files and headers in sequence files.
+        Check all sequences in the database for consistency.
+
+        This method calls the check method of all segment-specific SequenceData objects.
         """
         for segment in self.segments:
             self.segments[segment].check()
@@ -140,6 +167,14 @@ class FluSeqDatabase:
 
 class Record:
     def __init__(self, segment: str, isolate_id: str, fluseqdb: FluSeqDatabase) -> None:
+        """
+        A Record is a particular sequence and its metadata in the database.
+
+        Args:
+            segment: The segment of the sequence.
+            isolate_id: The isolate_id of the sequence.
+            fluseqdb: The database the sequence is from.
+        """
         self.db = fluseqdb
         self.segment = segment
         self.isolate_id = isolate_id
@@ -149,6 +184,12 @@ class Record:
 
     @cached_property
     def sequence(self) -> SeqRecord:
+        """
+        The sequence as a SeqRecord.
+
+        The _fasta_path attribute is set to the path of the fasta file this record
+        was read from.
+        """
         path = self.db.path("sequences", self.segment, f"{self.isolate_id}.fasta")
         with open(path) as fobj:
             seq = next(parse(fobj, "fasta"))
@@ -157,11 +198,26 @@ class Record:
 
     @cached_property
     def metadata(self) -> dict:
+        """
+        The metadata associated with this record as a dictionary.
+
+        The metadata is loaded from disk the first time it is accessed and then
+        cached for subsequent accesses.
+        """
         path = self.db.path("sequences", self.segment, f"{self.isolate_id}.json")
         with open(path) as fobj:
             return json.load(fobj)
 
     def check(self) -> None:
+        """
+        Check the record is self-consistent.
+
+        Checks that the isolate_id in the fasta filename matches the isolate_id in
+        the fasta record and that the isolate_id in the fasta record matches the
+        isolate_id in the metadata.
+
+        Raises an AssertionError if either check fails.
+        """
         assert (
             self.sequence._fasta_path.stem == self.sequence.id
         ), f"isolate_id in fasta file doesn't match record it contains: {self.sequence._fasta_path}"
@@ -175,7 +231,11 @@ class SegmentData:
 
     def __init__(self, fluseqdb: FluSeqDatabase, segment: str) -> None:
         """
-        Sequences from a particular segment in a database.
+        A collection of sequences and their metadata for a particular segment.
+
+        Args:
+            fluseqdb: The database the sequences are from.
+            segment: The segment of the sequences.
         """
         self.db = fluseqdb
         self.segment = segment
@@ -185,17 +245,44 @@ class SegmentData:
 
     @property
     def fasta_paths(self):
+        """
+        A list of paths to the fasta files for the sequences in this segment.
+
+        Returns:
+            Generator of Path objects to the fasta files.
+        """
         return self.db.path("sequences", self.segment).glob("*.fasta")
 
     @property
     def json_paths(self):
+        """
+        A list of paths to the json files for the sequences in this segment.
+
+        Returns:
+            Generator of Path objects to the json files.
+        """
         return self.db.path("sequences", self.segment).glob("*.json")
 
     def record(self, isolate_id: str) -> Record:
+        """
+        Get a Record for a particular isolate_id in this segment.
+
+        Args:
+            isolate_id: The isolate_id of the sequence to get.
+
+        Returns:
+            A Record object for the sequence.
+        """
         return Record(self.segment, isolate_id, self.db)
 
     @property
     def records(self) -> Generator[Record, None, None]:
+        """
+        A generator of Record objects for all sequences in this segment.
+
+        Yields:
+            Generator of Record objects for the sequences in this segment.
+        """
         for fasta_path in self.fasta_paths:
             isolate_id = fasta_path.stem
             yield self.record(isolate_id)
@@ -203,13 +290,25 @@ class SegmentData:
     @cached_property
     def reference(self) -> SeqRecord:
         """
-        A segment's reference sequence.
+        The reference sequence for this segment.
+
+        Returns:
+            A SeqRecord object for the reference sequence for this segment.
         """
         with open(self.db.path("reference", f"{self.segment}.fasta")) as fobj:
             return next(parse(fobj, "fasta"))
 
     @property
     def sequences(self) -> Generator[SeqRecord, None, None]:
+        """
+        A generator of SeqRecord objects for all sequences in this segment.
+
+        The sequences are read from disk on demand and the _fasta_path attribute is set
+        to the path of the fasta file the sequence was read from.
+
+        Yields:
+            Generator of SeqRecord objects for the sequences in this segment.
+        """
         for path in self.fasta_paths:
             with open(path) as fobj:
                 seq = next(parse(fobj, "fasta"))
@@ -218,6 +317,16 @@ class SegmentData:
 
     @cached_property
     def metadata(self) -> pd.DataFrame:
+        """
+        A DataFrame of all metadata for all sequences in this segment.
+
+        The DataFrame is generated from the .json files in the segment directory
+        and is cached for subsequent accesses.
+
+        Returns:
+            A DataFrame of all metadata for all sequences in this segment.
+        """
+
         def generate_rows():
             for path in self.json_paths:
                 with open(path) as fobj:
@@ -227,6 +336,14 @@ class SegmentData:
 
     def check(self) -> None:
         # Check that records are self-consistent
+        """
+        Check all sequences in this segment for consistency.
+
+        Checks that all sequences are self-consistent (i.e. the isolate_id in the fasta
+        filename matches the isolate_id in the fasta record and that the isolate_id in
+        the fasta record matches the isolate_id in the metadata) and that no sequence
+        files exist without metadata and vice versa.
+        """
         for record in self.records:
             record.check()
 
@@ -242,11 +359,17 @@ class SegmentData:
         self, subset: Optional[list[str]] = None, path: Optional[str] = None
     ) -> None:
         """
-        Write a fasta file.
+        Write all sequences in this segment to a fasta file.
+
+        If a subset of isolate_ids is specified, only those sequences are written.
+        If a path is specified, the sequences are written to that file. Otherwise,
+        the sequences are written to stdout.
 
         Args:
-            subset: Only include isolate_ids in subset in the output.
-            path: Path to write the fasta file to disk. If None, then print to stdout.
+            subset: A list of isolate_ids to write. Default is None, which causes
+                all sequences to be written.
+            path: The path to write the sequences to. Default is None, which causes
+                the sequences to be written to stdout.
         """
         subset_intersection = subset & set(record.isolate_id for record in self.records)
 
@@ -268,7 +391,16 @@ class SegmentData:
             with open(path, "w") as fobj:
                 write(seqs, fobj, "fasta")
 
-    def tree(self, outgroup: str) -> "dendropy.Tree":
+    def tree(self, outgroup: str) -> Tree:
+        """
+        Compute a tree for all sequences in this segment, rooted at the given outgroup.
+
+        Args:
+            outgroup: The isolate_id of the sequence to root the tree on.
+
+        Returns:
+            A dendropy.Tree object representing the tree.
+        """
         if not self.record(outgroup):
             raise ValueError(f"{outgroup} not a record")
 
@@ -303,6 +435,18 @@ class SegmentData:
     def clade_members(
         self, outgroup: str, ingroup: list[str], include_outgroup: bool = True
     ):
+        """
+        Return a set of isolate_ids that are descendants of the MRCA of the ingroup,
+        optionally including the outgroup.
+
+        Args:
+            outgroup: The isolate_id to root the tree on.
+            ingroup: The list of isolate_ids whose MRCA we want to identify descendants of.
+            include_outgroup: If True, then the outgroup is included in the set of descendants.
+
+        Returns:
+            A set of isolate_ids that are descendants of the MRCA of the ingroup.
+        """
         logging.info(f"building {self.segment} tree...")
         tree = self.tree(outgroup=outgroup)
         clade = extract_mrca_descendants(tree, taxa=ingroup)
@@ -380,7 +524,17 @@ def first_and_last_non_gap(sequence: str) -> tuple[int, int]:
 
 def extract_mrca_descendants(tree: Tree, taxa: list[str]) -> Tree:
     """
-    Extract a subtree comprising all descendants of the MRCA of a set of taxa.
+    Extracts the subtree of a tree that descends from the MRCA of a given set of taxa.
+
+    Args:
+        tree (Tree): The tree to extract the subtree from.
+        taxa (list[str]): The set of taxa to find the MRCA of.
+
+    Returns:
+        Tree: The subtree of `tree` that descends from the MRCA of `taxa`.
+
+    Notes:
+        The returned subtree will include the MRCA itself as the root node.
     """
     taxa_in_tree = set(leaf.taxon.label for leaf in tree.leaf_nodes()) & set(taxa)
     mrca = tree.mrca(taxon_labels=list(taxa_in_tree))
