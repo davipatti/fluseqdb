@@ -11,5 +11,5 @@ def main():
     args = parser.parse_args()
 
     FluSeqDatabase(args.db_dir).metadata.sort_values(["source", "isolate_id"]).to_csv(
-        sys.stdout
+        sys.stdout, index=False
     )

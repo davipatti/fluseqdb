@@ -12,7 +12,9 @@ packages = ["fluseqdb"]
 dev = ["pytest", "pyflakes", "pycodestyle"]
 
 [project.scripts]
-fs_addseq = "fluseqdb.add:main"
+fs_addseqs = "fluseqdb.add:main"
 fs_addmeta = "fluseqdb.add_metadata:main"
 fs_check = "fluseqdb.check:main"
 fs_dumpmeta = "fluseqdb.dump_metadata:main"
+fs_dumpseqs = "fluseqdb.dump_seqs:main"
+fs_dumpseqs_clade = "fluseqdb.dump_seqs_clade:main"

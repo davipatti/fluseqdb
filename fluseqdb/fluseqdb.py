@@ -1,14 +1,24 @@
+from operator import attrgetter
+import sys
+from string import ascii_lowercase
+import random
+import os
+import subprocess
 import json
 import logging
 from functools import cached_property
 from pathlib import Path
-from typing import Generator
+from typing import Generator, Optional
 
 import pandas as pd
 from Bio.Align import PairwiseAligner
 from Bio.SeqIO import parse, write
 from Bio.SeqRecord import SeqRecord
 from Bio.Seq import Seq
+from dendropy import Tree
+
+LOGLEVEL = os.environ.get("LOGLEVEL", "WARNING").upper()
+logging.basicConfig(level=LOGLEVEL)
 
 
 SEGMENTS = "PB2", "PB1", "PA", "HA", "NP", "NA", "MP", "NS"
@@ -94,6 +104,38 @@ class FluSeqDatabase:
         """
         for segment in self.segments:
             self.segments[segment].check()
+
+    def clade_members(
+        self,
+        outgroup: str,
+        ingroup: list[str],
+        include_outgroup: bool = True,
+        segments: Optional[list[str]] = None,
+    ) -> set[str]:
+        """
+        Return a set of isolate_ids that are descendants of the MRCA of the ingroup,
+        optionally including the outgroup.
+
+        Args:
+            outgroup: The isolate_id to root the tree on.
+            ingroup: The list of isolate_ids whose MRCA we want to identify descendants of.
+            include_outgroup: If True, then the outgroup is included in the set of descendants.
+            segments: The segment(s) to identify clades in. If None, then all segments are used.
+
+        Returns:
+            A set of isolate_ids that are descendants of the MRCA of the ingroup.
+        """
+        members = set()
+        segments = self.segments if segments is None else segments
+        for segment in segments:
+            members.update(
+                self.segments[segment].clade_members(
+                    outgroup=outgroup,
+                    ingroup=ingroup,
+                    include_outgroup=include_outgroup,
+                )
+            )
+        return members
 
 
 class Record:
@@ -196,6 +238,79 @@ class SegmentData:
         if missing := fasta_stems - json_stems:
             logging.warn(f"{self.segment} sequences missing metadata: {missing}")
 
+    def write_fasta(
+        self, subset: Optional[list[str]] = None, path: Optional[str] = None
+    ) -> None:
+        """
+        Write a fasta file.
+
+        Args:
+            subset: Only include isolate_ids in subset in the output.
+            path: Path to write the fasta file to disk. If None, then print to stdout.
+        """
+        subset_intersection = subset & set(record.isolate_id for record in self.records)
+
+        seqs = (
+            [
+                self.record(isolate_id).sequence
+                for isolate_id in sorted(subset_intersection)
+            ]
+            if subset is not None
+            else [
+                record.sequence
+                for record in sorted(self.records, key=attrgetter("isolate_id"))
+            ]
+        )
+
+        if path is None:
+            write(seqs, sys.stdout, "fasta")
+        else:
+            with open(path, "w") as fobj:
+                write(seqs, fobj, "fasta")
+
+    def tree(self, outgroup: str) -> "dendropy.Tree":
+        if not self.record(outgroup):
+            raise ValueError(f"{outgroup} not a record")
+
+        uid = "".join(random.choices(ascii_lowercase, k=8))
+        tmp_dir = f".{self.segment}_tree_{uid}"
+        os.mkdir(tmp_dir)
+
+        ali_path = Path(tmp_dir, "ali.fasta")
+        tree_path = Path(tmp_dir, "tree.tre")
+        log_path = Path(tmp_dir, "fasttree.log")
+
+        with open(ali_path, "w") as fobj:
+            write([record.sequence for record in self.records], fobj, "fasta")
+
+        with (
+            open(ali_path, "r") as stdin,
+            open(tree_path, "w") as stdout,
+            open(log_path, "w") as stderr,
+        ):
+            subprocess.run(
+                ["fasttree", "-nt", "-gtr", "-nosupport"],
+                stdin=stdin,
+                stdout=stdout,
+                stderr=stderr,
+            )
+
+        tree = Tree.get(path=tree_path, schema="newick", preserve_underscores=True)
+        og = tree.find_node_with_taxon_label(outgroup)
+        tree.reroot_at_node(og)
+        return tree
+
+    def clade_members(
+        self, outgroup: str, ingroup: list[str], include_outgroup: bool = True
+    ):
+        logging.info(f"building {self.segment} tree...")
+        tree = self.tree(outgroup=outgroup)
+        clade = extract_mrca_descendants(tree, taxa=ingroup)
+        members = set(leaf.taxon.label for leaf in clade.leaf_node_iter())
+        if include_outgroup:
+            members.add(outgroup)
+        return members
+
 
 def align_to_reference(reference_seq: str, input_seq: str) -> str:
     """
@@ -261,3 +376,12 @@ def first_and_last_non_gap(sequence: str) -> tuple[int, int]:
             break
 
     return first_non_gap, last_non_gap
+
+
+def extract_mrca_descendants(tree: Tree, taxa: list[str]) -> Tree:
+    """
+    Extract a subtree comprising all descendants of the MRCA of a set of taxa.
+    """
+    taxa_in_tree = set(leaf.taxon.label for leaf in tree.leaf_nodes()) & set(taxa)
+    mrca = tree.mrca(taxon_labels=list(taxa_in_tree))
+    return Tree(seed_node=mrca.extract_subtree())
