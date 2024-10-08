@@ -42,6 +42,14 @@ class FluSeqDatabase:
         Args:
             root_dir: The root directory of the database.
         """
+        if not (
+            Path(root_dir, "reference").exists()
+            and Path(root_dir, "sequences").exists()
+        ):
+            raise ValueError(
+                "root directory must contain 'reference' and 'sequences' subdirectories."
+            )
+
         self.root_dir = root_dir
         self.segments = {segment: SegmentData(self, segment) for segment in SEGMENTS}
 
@@ -371,19 +379,16 @@ class SegmentData:
             path: The path to write the sequences to. Default is None, which causes
                 the sequences to be written to stdout.
         """
-        subset_intersection = subset & set(record.isolate_id for record in self.records)
-
-        seqs = (
-            [
-                self.record(isolate_id).sequence
-                for isolate_id in sorted(subset_intersection)
-            ]
-            if subset is not None
-            else [
+        if subset is None:
+            seqs = [
                 record.sequence
                 for record in sorted(self.records, key=attrgetter("isolate_id"))
             ]
-        )
+        else:
+            intersection = subset & set(record.isolate_id for record in self.records)
+            seqs = [
+                self.record(isolate_id).sequence for isolate_id in sorted(intersection)
+            ]
 
         if path is None:
             write(seqs, sys.stdout, "fasta")
