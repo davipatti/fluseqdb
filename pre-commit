@@ -1,0 +1,5 @@
+#!/bin/sh
+
+set -eo pipefail
+python -W ignore::UserWarning:: -m flake8 --ignore=E501,F821,W503,E203
+pytest --disable-warnings --no-header
