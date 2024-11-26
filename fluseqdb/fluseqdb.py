@@ -434,7 +434,7 @@ class SegmentData:
 
         tree = Tree.get(path=tree_path, schema="newick", preserve_underscores=True)
         og = tree.find_node_with_taxon_label(outgroup)
-        tree.reroot_at_node(og)
+        tree.reroot_at_edge(og.edge)
         return tree
 
     def clade_members(
