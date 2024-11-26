@@ -26,7 +26,9 @@ def main():
     parser.add_argument(
         "--out_dir", help="Directory to write fasta files for each segment."
     )
-    parser.add_argument("--db_dir", help="Root directory of a fluseq db.", default=".")
+    parser.add_argument(
+        "--db_dir", help="Root directory of a fluseq db. Default='.'.", default="."
+    )
     args = parser.parse_args()
 
     fsdb = FluSeqDatabase(args.db_dir)

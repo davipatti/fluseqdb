@@ -13,7 +13,9 @@ def main():
     parser.add_argument(
         "--segment", help="Print sequences of this segment.", required=True
     )
-    parser.add_argument("--db_dir", help="Root directory of a fluseq db.", default=".")
+    parser.add_argument(
+        "--db_dir", help="Root directory of a fluseq db. Default='.'.", default="."
+    )
     args = parser.parse_args()
 
     if args.id_file is not None:
