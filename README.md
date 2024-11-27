@@ -13,7 +13,8 @@ and metadata for each isolate gets put in separate fasta and json files. Althoug
 cumbersome when it comes to reading in say all the sequences in a database it was done in order to
 be able to easily track changes to sequences and metadata for individual isolates using git. In
 practice, file i/o rarely takes longer than a second or two even for 10s of thousands of sequences.
-`reference` contains fasta files for each segment that each contain just a single sequence:
+`reference` contains fasta files for each segment that each contain just a single sequence.
+`sequences` must contain a subdirectory for each segment:
 
 ```
 reference/
@@ -25,6 +26,15 @@ reference/
 ├── PA.fasta
 ├── PB1.fasta
 └── PB2.fasta
+sequences/
+├── HA/
+├── MP/
+├── NA/
+├── NP/
+├── NS/
+├── PA/
+├── PB1/
+└── PB2/
 ```
 
 Sequences  added to the database are aligned against the appropriate reference sequence and

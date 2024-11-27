@@ -127,7 +127,9 @@ class FluSeqDatabase:
         'dna_accession', 'identifier' since these are specific to a particular segment.
         """
         return pd.concat(
-            self.segments[segment].metadata.drop(columns=SEGMENT_SPECIFIC_METADATA)
+            self.segments[segment].metadata[
+                ["isolate_id", "isolate_name", "collection_date"]
+            ]
             for segment in self.segments
         ).drop_duplicates()
 

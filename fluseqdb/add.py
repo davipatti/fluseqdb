@@ -54,7 +54,10 @@ def parse_header(header: str, pattern: str) -> dict[str, str]:
     return metadata
 
 
-def process_record(record: SeqRecord, fsdb: FluSeqDatabase, header_pattern: str):
+def process_record(record: SeqRecord, fsdb: FluSeqDatabase, header_pattern: str) -> int:
+    """
+    Process records, adding them to the database if necessary.
+    """
     metadata = parse_header(header=record.description, pattern=header_pattern)
     isolate_id = metadata["isolate_id"]
     segment = metadata["segment"]

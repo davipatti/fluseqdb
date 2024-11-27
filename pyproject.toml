@@ -3,7 +3,7 @@ name = "fluseqdb"
 description = "Make and interact with curated influenza sequences."
 version = "0.0.1"
 authors = [{ name = "David Pattinson", email = "david.pattinson@wisc.edu" }]
-dependencies = ["biopython"]
+dependencies = ["biopython", "pandas", "dendropy"]
 
 [tool.setuptools]
 packages = ["fluseqdb"]
